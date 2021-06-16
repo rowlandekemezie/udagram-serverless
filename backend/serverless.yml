@@ -12,6 +12,44 @@ provider:
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-west-2'}
 
+  tracing:
+    lambda: true
+    apiGateway: true
+
+  environment:
+    IMAGES_TABLE: Images-${self:provider.stage}
+    TODOS_TABLE: Todos-${self:provider.stage}
+    IMAGE_ID_INDEX: ImageIdIndex
+    TODOS_ID_INDEX: TodoIdIndex
+    CONNECTIONS_TABLE: Connections-${self:provider.stage}
+    IMAGES_S3_BUCKET: udagram-image-rowland-${self:provider.stage}
+    SIGNED_URL_EXPIRATION: 300
+    # AUTH_0_SECRET_ID: Auth0Secret-${self:provider.stage}
+    # AUTH_0_SECRET_FIELD: auth0Secret
+
+iamRoleStatements:
+  - Effect: Allow
+    Action:
+      - dynamodb:Scan
+      - dynamodb:PutItem
+      - dynamodb:GetItem
+      - dynamodb:DeleteItem
+    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+  - Effect: Allow
+    Action:
+      - dynamodb:PutItem
+      - dynamodb:Query
+    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}
+  - Effect: Allow
+    Action:
+      - dynamodb:Query
+    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}/index/${self:provider.environment.IMAGE_ID_INDEX}
+  - Effect: Allow
+    Action:
+      - s3:PutObject
+      - s3:GetObject
+    Resource: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*
+
 functions:
 
   Auth:
@@ -25,8 +63,6 @@ functions:
           method: get
           path: todos
 
-  # TODO: Configure this function
-  GetTodos:
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
     events:
@@ -61,3 +97,36 @@ functions:
 resources:
   Resources:
     # TODO: Add any necessary AWS resources
+    AttachmentsBucket:
+      Type: AWS::S3::Bucket
+      DependsOn: SNSTopicPolicy
+      Properties:
+        BucketName: ${self:provider.environment.IMAGES_S3_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            -
+              AllowedOrigins:
+                - '*'
+              AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              MaxAge: 3000
+
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: MyPolicy
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: 'arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*'
+        Bucket: !Ref AttachmentsBucket
