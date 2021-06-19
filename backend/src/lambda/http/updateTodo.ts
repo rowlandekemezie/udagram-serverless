@@ -14,7 +14,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   await docClient.update({
     TableName: todosTable,
     Key: {
-      id: todoId,
+      todoId,
       ...updatedTodo
     }
   }).promise()

@@ -24,8 +24,11 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   if (!validTodoId) {
     return {
       statusCode: 404,
+      headers: {
+          'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({
-        error: 'Group does not exist'
+        error: 'Todo does not exist'
       })
     }
   }
@@ -37,39 +40,43 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
 
   return {
     statusCode: 201,
+    headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true
+    },
     body: JSON.stringify({
-      newItem: newItem,
+      item: newItem,
       uploadUrl: url
     })
   }
-  return undefined
 }
 
 
-async function todoExists(groupId: string) {
+async function todoExists(todoId: string) {
   const result = await docClient
     .get({
       TableName: todosTable,
       Key: {
-        id: groupId
+        todoId: todoId
       }
     })
     .promise()
 
-  console.log('Get group: ', result)
+  console.log('Get todo: ', result)
   return !!result.Item
 }
 
-async function createImage(groupId: string, imageId: string, event: any) {
+async function createImage(todoId: string, imageId: string, event: any) {
   const timestamp = new Date().toISOString()
   const newImage = JSON.parse(event.body)
+  const imageUrl = `https://${bucketName}.s3.amazonaws.com/${imageId}`
 
   const newItem = {
-    groupId,
+    todoId,
     timestamp,
     imageId,
     ...newImage,
-    imageUrl: `https://${bucketName}.s3.amazonaws.com/${imageId}`
+    imageUrl
   }
   console.log('Storing new item: ', newItem)
 
@@ -79,6 +86,17 @@ async function createImage(groupId: string, imageId: string, event: any) {
       Item: newItem
     })
     .promise()
+
+  const updateUrlOnTodo = {
+    TableName: todosTable,
+    Key: { "todoId": todoId },
+    UpdateExpression: "set attachmentUrl = :a",
+    ExpressionAttributeValues:{
+      ":a": imageUrl
+  },
+  ReturnValues:"UPDATED_NEW"
+  }
+  await docClient.update(updateUrlOnTodo).promise()
 
   return newItem
 }

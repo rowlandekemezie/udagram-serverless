@@ -20,12 +20,12 @@ provider:
     IMAGES_TABLE: Images-${self:provider.stage}
     TODOS_TABLE: Todos-${self:provider.stage}
     IMAGE_ID_INDEX: ImageIdIndex
+    USER_ID_INDEX: UserIdIndex
     TODOS_ID_INDEX: TodoIdIndex
-    CONNECTIONS_TABLE: Connections-${self:provider.stage}
     IMAGES_S3_BUCKET: udagram-image-rowland-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
     # AUTH_0_SECRET_ID: Auth0Secret-${self:provider.stage}
-    # AUTH_0_SECRET_FIELD: auth0Secret
+    AUTH_0_SECRET: mcndN2G5Reh0ZtKRYxjXTHlO19lwyWjPSoD8AoraUUdH2jUv26RXl1BDW36vsZLT
 
 iamRoleStatements:
   - Effect: Allow
@@ -40,6 +40,10 @@ iamRoleStatements:
       - dynamodb:PutItem
       - dynamodb:Query
     Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}
+  - Effect: Allow
+    Action:
+      - dynamodb:Query
+    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/UserIdIndex
   - Effect: Allow
     Action:
       - dynamodb:Query
@@ -62,6 +66,7 @@ functions:
       - http:
           method: get
           path: todos
+          cors: true
 
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
@@ -69,6 +74,7 @@ functions:
       - http:
           method: post
           path: todos
+          cors: true
 
   # TODO: Configure this function
   UpdateTodo:
@@ -77,6 +83,7 @@ functions:
       - http:
           method: patch
           path: todos/{todoId}
+          cors: true
 
   # TODO: Configure this function
   DeleteTodo:
@@ -85,6 +92,7 @@ functions:
       - http:
           method: delete
           path: todos/{todoId}
+          cors: true
 
   # TODO: Configure this function
   GenerateUploadUrl:
@@ -93,13 +101,71 @@ functions:
       - http:
           method: post
           path: todos/{todoId}/attachment
+          cors: true
 
 resources:
   Resources:
     # TODO: Add any necessary AWS resources
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+
+    TodosDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: todoId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: todoId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.TODOS_TABLE}
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.USER_ID_INDEX}
+            KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    ImagesDynamoDBTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: todoId
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: S
+          - AttributeName: imageId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: todoId
+            KeyType: HASH
+          - AttributeName: timestamp
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+        TableName: ${self:provider.environment.IMAGES_TABLE}
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.IMAGE_ID_INDEX}
+            KeySchema:
+            - AttributeName: imageId
+              KeyType: HASH
+            Projection:
+              ProjectionType: ALL
     AttachmentsBucket:
       Type: AWS::S3::Bucket
-      DependsOn: SNSTopicPolicy
       Properties:
         BucketName: ${self:provider.environment.IMAGES_S3_BUCKET}
         CorsConfiguration:

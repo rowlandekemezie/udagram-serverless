@@ -14,11 +14,13 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   const newTodo: CreateTodoRequest = JSON.parse(event.body)
 
   console.log('Processing event: ', event)
-  const itemId = uuid.v4()
+  const todoId = uuid.v4()
+  const createdAt = new Date().toISOString()
 
   const newItem = {
-    id: itemId,
+    todoId,
     userId: getUserId(event),
+    createdAt,
     ...newTodo
   }
 
@@ -34,7 +36,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
       'Access-Control-Allow-Credentials': true
     },
     body: JSON.stringify({
-      newItem
+      item: newItem
     })
   }
 }
