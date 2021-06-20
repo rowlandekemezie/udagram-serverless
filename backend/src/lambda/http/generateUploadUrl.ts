@@ -17,8 +17,6 @@ const urlExpiration = process.env.SIGNED_URL_EXPIRATION
 export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const todoId = event.pathParameters.todoId
 
-  // TODO: Return a presigned URL to upload a file for a TODO item with the provided id
-
   const validTodoId = await todoExists(todoId)
 
   if (!validTodoId) {
@@ -34,7 +32,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   }
 
   const imageId = uuid.v4()
-  const newItem = await createImage(todoId, imageId, event)
+  await createImage(todoId, imageId, event)
 
   const url = getUploadUrl(imageId)
 
@@ -45,7 +43,6 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
         'Access-Control-Allow-Credentials': true
     },
     body: JSON.stringify({
-      item: newItem,
       uploadUrl: url
     })
   }

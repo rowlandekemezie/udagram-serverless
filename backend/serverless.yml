@@ -1,13 +1,15 @@
-service:
-  name: serverless-todo-app
+service: serverless-todoist
 
 plugins:
   - serverless-webpack
+  - serverless-reqvalidator-plugin
+  - serverless-plugin-canary-deployments
   - serverless-iam-roles-per-function
 
 provider:
   name: aws
-  runtime: nodejs12.x
+  runtime: nodejs14.x
+  lambdaHashingVersion: 20201221
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-west-2'}
@@ -24,42 +26,27 @@ provider:
     TODOS_ID_INDEX: TodoIdIndex
     IMAGES_S3_BUCKET: udagram-image-rowland-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
-    # AUTH_0_SECRET_ID: Auth0Secret-${self:provider.stage}
     AUTH_0_SECRET: mcndN2G5Reh0ZtKRYxjXTHlO19lwyWjPSoD8AoraUUdH2jUv26RXl1BDW36vsZLT
 
-iamRoleStatements:
-  - Effect: Allow
-    Action:
-      - dynamodb:Scan
-      - dynamodb:PutItem
-      - dynamodb:GetItem
-      - dynamodb:DeleteItem
-    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-  - Effect: Allow
-    Action:
-      - dynamodb:PutItem
-      - dynamodb:Query
-    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}
-  - Effect: Allow
-    Action:
-      - dynamodb:Query
-    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/UserIdIndex
-  - Effect: Allow
-    Action:
-      - dynamodb:Query
-    Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}/index/${self:provider.environment.IMAGE_ID_INDEX}
-  - Effect: Allow
-    Action:
-      - s3:PutObject
-      - s3:GetObject
-    Resource: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*
-
+custom:
+  documentation:
+    api:
+      info:
+        version: v1.0.0
+        title: Udagram API 
+        description: Serverless application for images sharing
+    models:
+      - name: TodoRequest
+        contentType: application/json
+        schema: ${file(models/create-todo-request.json)}
+      - name: UpdateRequest
+        contentType: application/json
+        schema: ${file(models/update-todo-request.json)}
 functions:
 
   Auth:
     handler: src/lambda/auth/auth0Authorizer.handler
 
-  # TODO: Configure this function
   GetTodos:
     handler: src/lambda/http/getTodos.handler
     events:
@@ -67,6 +54,20 @@ functions:
           method: get
           path: todos
           cors: true
+    iamRoleStatementsName: ${self:service}-get-todos-role-${self:provider.stage}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/UserIdIndex
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}/index/${self:provider.environment.IMAGE_ID_INDEX}
 
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
@@ -75,8 +76,20 @@ functions:
           method: post
           path: todos
           cors: true
+          request:
+            schemas:
+              application/json:
+                schema: ${file(models/create-todo-request.json)}
+                name: TodoCreateModel
+                description: 'Validation model for Creating Todos'
+    iamRoleStatementsName: ${self:service}-create-todo-role-${self:provider.stage}
+    iamRoleStatements:
 
-  # TODO: Configure this function
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+
   UpdateTodo:
     handler: src/lambda/http/updateTodo.handler
     events:
@@ -84,8 +97,20 @@ functions:
           method: patch
           path: todos/{todoId}
           cors: true
+          request:
+            schemas:
+              application/json:
+                schema: ${file(models/update-todo-request.json)}
+                name: TodoUpdateModel
+                description: 'Validation model for Updating Todos'
 
-  # TODO: Configure this function
+    iamRoleStatementsName: ${self:service}-update-todo-role-${self:provider.stage}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+
   DeleteTodo:
     handler: src/lambda/http/deleteTodo.handler
     events:
@@ -93,8 +118,13 @@ functions:
           method: delete
           path: todos/{todoId}
           cors: true
+    iamRoleStatementsName: ${self:service}-delete-todo-role-${self:provider.stage}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:DeleteItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
 
-  # TODO: Configure this function
   GenerateUploadUrl:
     handler: src/lambda/http/generateUploadUrl.handler
     events:
@@ -102,10 +132,27 @@ functions:
           method: post
           path: todos/{todoId}/attachment
           cors: true
+    iamRoleStatementsName: ${self:service}-generate-uploadurl-role-${self:provider.stage}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+          - s3:GetObject
+        Resource: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+          - dynamodb:GetItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.IMAGES_TABLE}
+
 
 resources:
   Resources:
-    # TODO: Add any necessary AWS resources
     GatewayResponseDefault4XX:
       Type: AWS::ApiGateway::GatewayResponse
       Properties:
@@ -196,3 +243,12 @@ resources:
               Action: 's3:GetObject'
               Resource: 'arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*'
         Bucket: !Ref AttachmentsBucket
+    
+    # RequestBodyValidator:
+    #   Type: AWS::ApiGateway::RequestValidator
+    #   Properties:
+    #     Name: 'request-body-validator'
+    #     RestApiId:
+    #       Ref: ApiGatewayRestApi
+    #     ValidateRequestBody: true
+    #     ValidateRequestParameters: false
