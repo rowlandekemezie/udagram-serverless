@@ -3,6 +3,10 @@ import * as AWS from 'aws-sdk'
 import * as uuid from 'uuid'
 
 import { APIGatewayProxyEvent, APIGatewayProxyResult, APIGatewayProxyHandler } from 'aws-lambda'
+import { getUserId } from '../utils'
+import { createLogger } from '../../utils/logger'
+
+const logger = createLogger('GenerateUploadUrl:')
 
 const docClient = new AWS.DynamoDB.DocumentClient()
 const s3 = new AWS.S3({
@@ -16,10 +20,13 @@ const urlExpiration = process.env.SIGNED_URL_EXPIRATION
 
 export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const todoId = event.pathParameters.todoId
+  const userId = getUserId(event)
 
-  const validTodoId = await todoExists(todoId)
+  logger.info('userId', { userId })
+  const isValidTodoId = await todoExists(todoId, userId)
 
-  if (!validTodoId) {
+
+  if (!isValidTodoId) {
     return {
       statusCode: 404,
       headers: {
@@ -32,7 +39,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   }
 
   const imageId = uuid.v4()
-  await createImage(todoId, imageId, event)
+  await createImage(todoId, imageId, event, userId)
 
   const url = getUploadUrl(imageId)
 
@@ -49,25 +56,32 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
 }
 
 
-async function todoExists(todoId: string) {
+async function todoExists(todoId: string, userId: string) {
+  logger.info('userId', { userId, todoId })
+
   const result = await docClient
     .get({
       TableName: todosTable,
       Key: {
-        todoId: todoId
+        todoId,
+        userId
       }
     })
     .promise()
 
-  console.log('Get todo: ', result)
+  logger.info('Get todo: ', result)
   return !!result.Item
 }
 
-async function createImage(todoId: string, imageId: string, event: any) {
+async function createImage(todoId: string, imageId: string, event: any, userId: string) {
   const timestamp = new Date().toISOString()
   const newImage = JSON.parse(event.body)
   const imageUrl = `https://${bucketName}.s3.amazonaws.com/${imageId}`
-
+  logger.info('todoItem', { todoId, imageId, userId, event})
+  const key = {
+    userId,
+    todoId
+  }
   const newItem = {
     todoId,
     timestamp,
@@ -75,7 +89,7 @@ async function createImage(todoId: string, imageId: string, event: any) {
     ...newImage,
     imageUrl
   }
-  console.log('Storing new item: ', newItem)
+  logger.info('Storing new item: ', newItem)
 
   await docClient
     .put({
@@ -86,7 +100,7 @@ async function createImage(todoId: string, imageId: string, event: any) {
 
   const updateUrlOnTodo = {
     TableName: todosTable,
-    Key: { "todoId": todoId },
+    Key: key,
     UpdateExpression: "set attachmentUrl = :a",
     ExpressionAttributeValues:{
       ":a": imageUrl

@@ -6,7 +6,9 @@ import { DocumentClient } from 'aws-sdk/clients/dynamodb'
 
 import { TodoItem } from '../models/TodoItem'
 import { TodoUpdate } from '../models/TodoUpdate'
+import { createLogger } from '../utils/logger'
 
+const logger = createLogger('TodoClass')
 export class Todo {
   constructor(
     private readonly docClient: DocumentClient = new AWS.DynamoDB.DocumentClient(),
@@ -14,7 +16,7 @@ export class Todo {
   }
 
   async getAllTodos(userId: string): Promise<TodoItem[]> {
-    console.log('Getting all todos')
+    logger.info('Getting all todos', { userId })
 
     const result = await this.docClient.query({
       TableName : this.todosTable,
@@ -39,11 +41,16 @@ export class Todo {
     return todo
   }
 
-  async updateTodo(todoId: string, updatedTodo: TodoUpdate): Promise<TodoUpdate> {
+  async updateTodo(todoId: string, userId: string, updatedTodo: TodoUpdate): Promise<TodoUpdate> {
+    logger.info('todoItem', todoId)
     
+    const key = { 
+      userId,
+      todoId
+    }
    await this.docClient.update({
       TableName: this.todosTable,
-      Key: { todoId },  
+      Key: key,  
       UpdateExpression: "SET #n = :n, dueDate = :dueDate, done = :done",
       ExpressionAttributeValues: {
         ":n": updatedTodo.name,
@@ -59,11 +66,15 @@ export class Todo {
     return updatedTodo;
   }
 
-  async deleteTodo(todoId: string): Promise<Record<string, boolean>> {
-    
+  async deleteTodo(todoId: string, userId: string): Promise<Record<string, boolean>> {
+  
+    const key = {
+      userId,
+      todoId
+    }
     await this.docClient.delete({
       TableName: this.todosTable,
-      Key: { todoId }
+      Key: key
     }).promise()
 
     return {
