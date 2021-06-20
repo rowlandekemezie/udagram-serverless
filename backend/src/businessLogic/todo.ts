@@ -32,17 +32,20 @@ export async function createTodo(
 
 export async function updateTodo(
   updateTodoRequest: UpdateTodoRequest,
-  todoId: string
+  todoId: string,
+  userId: string
 ): Promise<TodoUpdate> {
 
   return await todo.updateTodo(
     todoId,
+    userId,
     updateTodoRequest
   )
 }
 
 export async function deleteTodo(
-  todoId: string
+  todoId: string,
+  userId: string
 ): Promise<Record<string, boolean>> {
-  return await todo.deleteTodo(todoId)
+  return await todo.deleteTodo(todoId, userId)
 }
